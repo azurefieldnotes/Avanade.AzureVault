@@ -93,9 +93,9 @@ Function Invoke-AzureVaultRequest
     {
         $Response = Invoke-WebRequest @RequestParams -UseBasicParsing -ErrorAction Stop
         Write-Verbose "[Invoke-AzureVaultRequest]$Method $Uri Response:$($Response.StatusCode)-$($Response.StatusDescription) Content-Length:$($Response.RawContentLength)"
-        if(-not [String]::IsNullOrEmpty($Response.Content))
+        if (-not [String]::IsNullOrEmpty($Response.Content))
         {
-            $RequestResult=$Response.Content|ConvertFrom-Json
+            $RequestResult = $Response.Content|ConvertFrom-Json
         }
         if ($ReturnHeaders.IsPresent)
         {
@@ -107,6 +107,7 @@ Function Invoke-AzureVaultRequest
         #See if we can unwind an exception from a response
         if ($_.Exception.Response -ne $null)
         {
+            Write-Verbose "[Invoke-AzureVaultRequest] Unwinding Exception Response..."
             $ExceptionResponse = $_.Exception.Response
             $ErrorStream = $ExceptionResponse.GetResponseStream()
             $ErrorStream.Position = 0
@@ -126,6 +127,7 @@ Function Invoke-AzureVaultRequest
             }
             catch
             {
+                Write-Warning "[Invoke-AzureVaultRequest] Error occurred reading exception stream! $_"
             }
             finally
             {
@@ -268,7 +270,7 @@ Function New-AzureVaultKeyParameters
         'nbf'     = $(($NotBefore - $Epoch).TotalSeconds);
         'exp'     = $((($NotBefore.AddDays($ExpiryInDays)) - $Epoch).TotalSeconds);
     }
-    $KeyProperties=[ordered]@{
+    $KeyProperties = [ordered]@{
         'attributes' = $NewKeyAttributes;
         'key_ops'    = $KeyOperations;
         'key_size'   = $KeySize;
@@ -458,7 +460,7 @@ Function Get-AzureVaultKey
     )
     BEGIN
     {
-        $VaultBaseUri="https://${VaultName}.${VaultDomain}"
+        $VaultBaseUri = "https://${VaultName}.${VaultDomain}"
         $VaultUriBld = New-Object System.UriBuilder($VaultBaseUri)
         $VaultUriBld.Query = "api-version=${ApiVersion}"
         $Headers = @{Accept = 'application/json'}
@@ -486,11 +488,12 @@ Function Get-AzureVaultKey
         }
         else
         {
-            if($MaxResults -gt 0)
+            if ($MaxResults -gt 0)
             {
                 Write-Verbose "[Get-AzureVaultKey] Listing All Keys ${VaultBaseUri} -> MaxResults=${MaxResults}"
             }
-            else {
+            else
+            {
                 Write-Verbose "[Get-AzureVaultKey] Listing All Keys ${VaultBaseUri}"
             }
             $VaultUriBld.Path = "/keys"
@@ -518,7 +521,7 @@ Function New-AzureVaultKey
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [String]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [String[]]$KeyOperations=@("sign", "verify", "wrapKey", "unwrapKey", "encrypt", "decrypt"),        
+        [String[]]$KeyOperations = @("sign", "verify", "wrapKey", "unwrapKey", "encrypt", "decrypt"),        
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [datetime]$NotBefore = [datetime]::UtcNow,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
@@ -543,7 +546,7 @@ Function New-AzureVaultKey
     }
     PROCESS
     {
-        $KeyParams=@{
+        $KeyParams = @{
             KeyName       = $KeyName;
             KeyType       = $KeyType;
             KeySize       = $KeySize;
@@ -588,7 +591,7 @@ Function Remove-AzureVaultKey
     )
     BEGIN
     {
-        $VaultBaseUri="https://${VaultName}.${VaultDomain}"
+        $VaultBaseUri = "https://${VaultName}.${VaultDomain}"
         $VaultUriBld = New-Object System.UriBuilder($VaultBaseUri)
         $VaultUriBld.Query = "api-version=${ApiVersion}"
         $RequestParams = @{
@@ -622,41 +625,43 @@ function New-AzureVaultEncryptedValue
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipeline = $true,ValueFromPipelineByPropertyName = $true)]
         [string[]]$Value,        
         [ValidateSet('RSA-OAEP', 'RSA-OAEP-256', 'RSA1_5' )]
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
-        [string]$Algorithm='RSA-OAEP256'       
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [string]$Algorithm = 'RSA-OAEP256'       
     )
     begin
     {
         $VaultUriBld = New-Object System.UriBuilder("https://${VaultName}.${VaultDomain}")
         $VaultUriBld.Query = "api-version=${ApiVersion}"
-        if ([String]::IsNullOrEmpty($KeyVersion)) {
+        if ([String]::IsNullOrEmpty($KeyVersion))
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/encrypt" 
         }
-        else {
+        else
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/${KeyVersion}/encrypt"
         }
-        $RequestParams=@{
-            Uri=$VaultUriBld.Uri;
-            Method='POST';
-            AdditionalHeaders=@{Accept = 'application/json'};
-            AccessToken= $AccessToken;
-            ContentType='application/json'
+        $RequestParams = @{
+            Uri               = $VaultUriBld.Uri;
+            Method            = 'POST';
+            AdditionalHeaders = @{Accept = 'application/json'};
+            AccessToken       = $AccessToken;
+            ContentType       = 'application/json'
         }        
     }
     process
     {
         foreach ($item in $Value)
         {
-            $RequestParams['Body']=[ordered]@{
-                'alg'=$Algorithm;
-                'value'=$Value;
+            $RequestParams['Body'] = [ordered]@{
+                'alg'   = $Algorithm;
+                'value' = $Value;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -673,41 +678,43 @@ function Get-AzureVaultDecryptedValue
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$Value,        
         [ValidateSet('RSA-OAEP', 'RSA-OAEP-256', 'RSA1_5' )]
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
-        [string]$Algorithm='RSA-OAEP256'       
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [string]$Algorithm = 'RSA-OAEP256'       
     )
     begin
     {
         $VaultUriBld = New-Object System.UriBuilder("https://${VaultName}.${VaultDomain}")
         $VaultUriBld.Query = "api-version=${ApiVersion}"
-        if ([String]::IsNullOrEmpty($KeyVersion)) {
+        if ([String]::IsNullOrEmpty($KeyVersion))
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/decrypt" 
         }
-        else {
+        else
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/${KeyVersion}/decrypt"
         }
-        $RequestParams=@{
-            Uri=$VaultUriBld.Uri;
-            Method='POST';
-            AdditionalHeaders=@{Accept = 'application/json'};
-            AccessToken= $AccessToken;
-            ContentType='application/json'
+        $RequestParams = @{
+            Uri               = $VaultUriBld.Uri;
+            Method            = 'POST';
+            AdditionalHeaders = @{Accept = 'application/json'};
+            AccessToken       = $AccessToken;
+            ContentType       = 'application/json'
         }
     }
     process
     {
         foreach ($item in $Value)
         {
-            $RequestParams['Body']=[ordered]@{
-                'alg'=$Algorithm;
-                'value'=$Value;
+            $RequestParams['Body'] = [ordered]@{
+                'alg'   = $Algorithm;
+                'value' = $Value;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -724,41 +731,43 @@ function New-AzureVaultSignedValue
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$Value,        
         [ValidateSet('PS256', 'PS384', 'PS512', 'RS256', 'RS384', 'RS512', 'RSNULL')]
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
-        [string]$Algorithm='RS256'       
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [string]$Algorithm = 'RS256'       
     )
     begin
     {
         $VaultUriBld = New-Object System.UriBuilder("https://${VaultName}.${VaultDomain}")
         $VaultUriBld.Query = "api-version=${ApiVersion}"
-        if ([String]::IsNullOrEmpty($KeyVersion)) {
+        if ([String]::IsNullOrEmpty($KeyVersion))
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/sign" 
         }
-        else {
+        else
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/${KeyVersion}/sign"
         }
-        $RequestParams=@{
-            Uri=$VaultUriBld.Uri;
-            Method='POST';
-            AdditionalHeaders=@{Accept = 'application/json'};
-            AccessToken= $AccessToken;
-            ContentType='application/json'
+        $RequestParams = @{
+            Uri               = $VaultUriBld.Uri;
+            Method            = 'POST';
+            AdditionalHeaders = @{Accept = 'application/json'};
+            AccessToken       = $AccessToken;
+            ContentType       = 'application/json'
         }
     }
     process
     {
         foreach ($item in $Value)
         {
-            $RequestParams['Body']=[ordered]@{
-                'alg'=$Algorithm;
-                'value'=$Value;
+            $RequestParams['Body'] = [ordered]@{
+                'alg'   = $Algorithm;
+                'value' = $Value;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -775,44 +784,46 @@ function Test-AzureVaultSignedValue
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,      
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$Value,
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$Digest,           
         [ValidateSet('PS256', 'PS384', 'PS512', 'RS256', 'RS384', 'RS512', 'RSNULL')]
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
-        [string]$Algorithm='RS256'       
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [string]$Algorithm = 'RS256'       
     )
     begin
     {
         $VaultUriBld = New-Object System.UriBuilder("https://${VaultName}.${VaultDomain}")
         $VaultUriBld.Query = "api-version=${ApiVersion}"
-        if ([String]::IsNullOrEmpty($KeyVersion)) {
+        if ([String]::IsNullOrEmpty($KeyVersion))
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/verify" 
         }
-        else {
+        else
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/${KeyVersion}/verify"
         }
-        $RequestParams=@{
-            Uri=$VaultUriBld.Uri;
-            Method='POST';
-            AdditionalHeaders=@{Accept = 'application/json'};
-            AccessToken= $AccessToken;
-            ContentType='application/json'
+        $RequestParams = @{
+            Uri               = $VaultUriBld.Uri;
+            Method            = 'POST';
+            AdditionalHeaders = @{Accept = 'application/json'};
+            AccessToken       = $AccessToken;
+            ContentType       = 'application/json'
         }
     }
     process
     {
         foreach ($item in $Value)
         {
-            $RequestParams['Body']=[ordered]@{
-                'alg'=$Algorithm;
-                'digest'=$Digest;
-                'value'=$Value;
+            $RequestParams['Body'] = [ordered]@{
+                'alg'    = $Algorithm;
+                'digest' = $Digest;
+                'value'  = $Value;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -829,41 +840,43 @@ function New-AzureVaultUnwrappedKey
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$Value,        
         [ValidateSet('RSA-OAEP', 'RSA-OAEP-256', 'RSA1_5' )]
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
-        [string]$Algorithm='RSA-OAEP256'    
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [string]$Algorithm = 'RSA-OAEP256'    
     )
     begin
     {
         $VaultUriBld = New-Object System.UriBuilder("https://${VaultName}.${VaultDomain}")
         $VaultUriBld.Query = "api-version=${ApiVersion}"
-        if ([String]::IsNullOrEmpty($KeyVersion)) {
+        if ([String]::IsNullOrEmpty($KeyVersion))
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/unwrap" 
         }
-        else {
+        else
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/${KeyVersion}/unwrap"
         }
-        $RequestParams=@{
-            Uri=$VaultUriBld.Uri;
-            Method='POST';
-            AdditionalHeaders=@{Accept = 'application/json'};
-            AccessToken= $AccessToken;
-            ContentType='application/json'
+        $RequestParams = @{
+            Uri               = $VaultUriBld.Uri;
+            Method            = 'POST';
+            AdditionalHeaders = @{Accept = 'application/json'};
+            AccessToken       = $AccessToken;
+            ContentType       = 'application/json'
         }
     }
     process
     {
         foreach ($item in $Value)
         {
-            $RequestParams['Body']=[ordered]@{
-                'alg'=$Algorithm;
-                'value'=$Value;
+            $RequestParams['Body'] = [ordered]@{
+                'alg'   = $Algorithm;
+                'value' = $Value;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -880,41 +893,43 @@ function New-AzureVaultWrappedKey
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$Value,        
         [ValidateSet('RSA-OAEP', 'RSA-OAEP-256', 'RSA1_5' )]
-        [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
-        [string]$Algorithm='RSA-OAEP256'   
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [string]$Algorithm = 'RSA-OAEP256'   
     )
     begin
     {
         $VaultUriBld = New-Object System.UriBuilder("https://${VaultName}.${VaultDomain}")
         $VaultUriBld.Query = "api-version=${ApiVersion}"
-        if ([String]::IsNullOrEmpty($KeyVersion)) {
+        if ([String]::IsNullOrEmpty($KeyVersion))
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/wrap" 
         }
-        else {
+        else
+        {
             $VaultUriBld.Path = "/keys/${KeyName}/${KeyVersion}/wrap"
         }
-        $RequestParams=@{
-            Uri=$VaultUriBld.Uri;
-            Method='POST';
-            AdditionalHeaders=@{Accept = 'application/json'};
-            AccessToken= $AccessToken;
-            ContentType='application/json'
+        $RequestParams = @{
+            Uri               = $VaultUriBld.Uri;
+            Method            = 'POST';
+            AdditionalHeaders = @{Accept = 'application/json'};
+            AccessToken       = $AccessToken;
+            ContentType       = 'application/json'
         }
     }
     process
     {
         foreach ($item in $Value)
         {
-            $RequestParams['Body']=[ordered]@{
-                'alg'=$Algorithm;
-                'value'=$Value;
+            $RequestParams['Body'] = [ordered]@{
+                'alg'   = $Algorithm;
+                'value' = $Value;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -950,7 +965,7 @@ Function Get-AzureVaultSecret
     )
     BEGIN
     {
-        $VaultBaseUri="https://${VaultName}.${VaultDomain}"
+        $VaultBaseUri = "https://${VaultName}.${VaultDomain}"
         $VaultUriBld = New-Object System.UriBuilder($VaultBaseUri)
         $VaultUriBld.Query = "api-version=${ApiVersion}"
         $Headers = @{Accept = 'application/json'}
@@ -958,6 +973,8 @@ Function Get-AzureVaultSecret
             Method            = 'GET'
             AdditionalHeaders = $Headers;
             ContentType       = 'application/json';
+            AccessToken       = $AccessToken;
+            ErrorAction       = 'Stop';
         }
         Write-Verbose "[Get-AzureVaultSecret] Retrieving secret(s) from ${VaultBaseUri}"
     }
@@ -978,11 +995,12 @@ Function Get-AzureVaultSecret
         }
         else
         {
-            if($MaxResults -gt 0)
+            if ($MaxResults -gt 0)
             {
                 Write-Verbose "[Get-AzureVaultSecret] Listing All Secrets ${VaultBaseUri} -> MaxResults=${MaxResults}"
             }
-            else {
+            else
+            {
                 Write-Verbose "[Get-AzureVaultSecret] Listing All Secrets ${VaultBaseUri}"
             }            
             $Result = Invoke-AzureVaultRequest @RequestParams -Uri $VaultUriBld.Uri
@@ -1041,11 +1059,11 @@ Function New-AzureVaultSecret
     {
         #Build the object
         $SecretParams = @{
-            Value=$Value;
-            ContentType=$ContentType;
-            NotBefore=$NotBefore;
-            ExpiryInDays=$ExpiryInDays;
-            Tags=$Tags;
+            Value        = $Value;
+            ContentType  = $ContentType;
+            NotBefore    = $NotBefore;
+            ExpiryInDays = $ExpiryInDays;
+            Tags         = $Tags;
         }
         $NewSecret = New-AzureVaultSecretParameters @SecretParams
         $RequestParams['Body'] = $NewSecret
@@ -1076,7 +1094,7 @@ Function Remove-AzureVaultSecret
     )
     BEGIN
     {
-        $VaultBaseUri="https://${VaultName}.${VaultDomain}"
+        $VaultBaseUri = "https://${VaultName}.${VaultDomain}"
         $VaultUriBld = New-Object System.UriBuilder($VaultBaseUri)
         $VaultUriBld.Query = "api-version=${ApiVersion}"
         $RequestParams = @{
@@ -1129,7 +1147,7 @@ Function Get-AzureVaultCertificate
     )
     BEGIN
     {
-        $VaultBaseUri="https://${VaultName}.${VaultDomain}"
+        $VaultBaseUri = "https://${VaultName}.${VaultDomain}"
         $VaultUriBld = New-Object System.UriBuilder($VaultBaseUri)
         $VaultUriBld.Query = "api-version=${ApiVersion}"
         $Headers = @{Accept = 'application/json'}
@@ -1158,11 +1176,12 @@ Function Get-AzureVaultCertificate
         else
         {
             $VaultUriBld.Path = "/certificates"
-            if($MaxResults -gt 0)
+            if ($MaxResults -gt 0)
             {
                 Write-Verbose "[Get-AzureVaultCertificate] Listing All Certificates ${VaultBaseUri} -> MaxResults=${MaxResults}"
             }
-            else {
+            else
+            {
                 Write-Verbose "[Get-AzureVaultCertificate] Listing All Certificates ${VaultBaseUri}"
             }              
             $Result = Invoke-AzureVaultRequest @RequestParams  -Uri $VaultUriBld.Uri
@@ -1189,7 +1208,7 @@ Function New-AzureVaultCertificate
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String]$KeyType = 'RSA',        
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [String[]]$KeyUsage=@("sign", "verify", "wrapKey", "unwrapKey", "encrypt", "decrypt"),
+        [String[]]$KeyUsage = @("sign", "verify", "wrapKey", "unwrapKey", "encrypt", "decrypt"),
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String[]]$EnhancedKeyUsage,
         #[ValidateSet('Self','Unknown','DigiCert','GlobalSign','WoSign')] 
@@ -1237,7 +1256,7 @@ Function New-AzureVaultCertificate
     )
     BEGIN
     {
-        $VaultBaseUri="https://${VaultName}.${VaultDomain}"
+        $VaultBaseUri = "https://${VaultName}.${VaultDomain}"
         $VaultUriBld = New-Object System.UriBuilder($VaultBaseUri)
         $VaultUriBld.Query = "api-version=${ApiVersion}"
         $VaultUriBld.Path = "/certificates/${CertificateName}/create"
@@ -1254,25 +1273,25 @@ Function New-AzureVaultCertificate
     {
         #Build the object
         $CertificateParams = [ordered]@{
-            KeyType=$KeyType;
-            KeyUsage=$KeyUsage;
-            KeySize=$KeySize;
-            EnhancedKeyUsage=$EnhancedKeyUsage;
-            Issuer=$Issuer;
-            Enabled=$Enabled;
-            IssuerCertType=$IssuerCertType;
-            Subject=$Subject;
-            SubjectAlternateNameEmails=$SubjectAlternateNameEmails;
-            SubjectAlternateNameUpns=$SubjectAlternateNameUpns;
-            SubjectAlternateNameDnsNames=$SubjectAlternateNameDnsNames
-            LifetimeExpireActionType=$LifetimeExpireActionType;
-            LifetimeExpirePercentage=$LifetimeExpirePercentage
-            LifetimeDaysBeforeExpire=$LifetimeDaysBeforeExpire
-            NotBefore=$NotBefore;
-            ExpiryInDays=$ExpiryInDays;
-            Exportable=$Exportable;
-            ReuseKey=$ReuseKey;
-            Tags=$Tags;
+            KeyType                      = $KeyType;
+            KeyUsage                     = $KeyUsage;
+            KeySize                      = $KeySize;
+            EnhancedKeyUsage             = $EnhancedKeyUsage;
+            Issuer                       = $Issuer;
+            Enabled                      = $Enabled;
+            IssuerCertType               = $IssuerCertType;
+            Subject                      = $Subject;
+            SubjectAlternateNameEmails   = $SubjectAlternateNameEmails;
+            SubjectAlternateNameUpns     = $SubjectAlternateNameUpns;
+            SubjectAlternateNameDnsNames = $SubjectAlternateNameDnsNames
+            LifetimeExpireActionType     = $LifetimeExpireActionType;
+            LifetimeExpirePercentage     = $LifetimeExpirePercentage
+            LifetimeDaysBeforeExpire     = $LifetimeDaysBeforeExpire
+            NotBefore                    = $NotBefore;
+            ExpiryInDays                 = $ExpiryInDays;
+            Exportable                   = $Exportable;
+            ReuseKey                     = $ReuseKey;
+            Tags                         = $Tags;
         }
         $NewCertificate = New-AzureVaultCertificateParameters @CertificateParams
         $RequestParams['Body'] = $NewCertificate
@@ -1303,7 +1322,7 @@ Function Remove-AzureVaultCertificate
     )
     BEGIN
     {
-        $VaultBaseUri="https://${VaultName}.${VaultDomain}"
+        $VaultBaseUri = "https://${VaultName}.${VaultDomain}"
         $VaultUriBld = New-Object System.UriBuilder($VaultBaseUri)
         $VaultUriBld.Query = "api-version=${ApiVersion}"
         $RequestParams = @{
@@ -1332,3 +1351,84 @@ Function Remove-AzureVaultCertificate
 }
 
 #endregion
+
+function ConvertFrom-AzureVaultSecretToCredential
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [string]$UserName,
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$SecretName,    
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [String]$ApiVersion = '2016-10-01',
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$AccessToken        
+    )
+
+    begin
+    {
+        $SecretParams=@{
+            VaultName=$VaultName;
+            VaultDomain=$VaultDomain;
+            ApiVersion=$ApiVersion;
+            AccessToken=$AccessToken;
+            SecretName=$SecretName;
+        }
+    }
+    process
+    {
+        #Retreive the secret from the vault   
+        $PasswordSecret=Get-AzureVaultSecret @SecretParams -ErrorAction Stop
+        $SecurePassword=new-object securestring
+        if(-not [string]::IsNullOrEmpty($PasswordSecret))
+        {
+            $PasswordSecret.ToCharArray()|ForEach-Object{$SecurePassword.AppendChar($_)}
+        }
+        $Credential=New-Object PSCredential($UserName,$SecurePassword)
+        Write-Output $Credential
+    }
+}
+
+function ConvertFrom-AzureVaultSecretToCertificate
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$SecretName,    
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [String]$ApiVersion = '2016-10-01',
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$AccessToken        
+    )
+
+    begin
+    {
+        $SecretParams=@{
+            VaultName=$VaultName;
+            VaultDomain=$VaultDomain;
+            ApiVersion=$ApiVersion;
+            AccessToken=$AccessToken;
+            SecretName=$SecretName;
+        }
+    }
+    process
+    {
+        #Retreive the secret from the vault   
+        $PasswordSecret=Get-AzureVaultSecret @SecretParams -ErrorAction Stop
+        if($PasswordSecret -ne $null -and (-not [string]::IsNullOrEmpty($PasswordSecret.value)))
+        {
+
+        }
+    }
+}
