@@ -93,7 +93,14 @@ Function Invoke-AzureVaultRequest
     {
         $Response = Invoke-WebRequest @RequestParams -UseBasicParsing -ErrorAction Stop
         Write-Verbose "[Invoke-AzureVaultRequest]$Method $Uri Response:$($Response.StatusCode)-$($Response.StatusDescription) Content-Length:$($Response.RawContentLength)"
-        $RequestResult = Invoke-Command -ScriptBlock $ContentAction -ArgumentList $Response.Content|ConvertFrom-Json
+        if(-not [String]::IsNullOrEmpty($Response.Content))
+        {
+            $RequestResult=$Response.Content|ConvertFrom-Json
+        }
+        if ($ReturnHeaders.IsPresent)
+        {
+            Write-Output $Response.Headers
+        }
     }
     catch
     {
@@ -136,105 +143,98 @@ Function Invoke-AzureVaultRequest
     #Should never get here null
     if ($RequestResult -ne $null)
     {
-        if ($ReturnHeaders.IsPresent)
+        if ($RequestResult.PSobject.Properties.name -match $ValueProperty)
         {
-            return $Response.Headers
+            $Result = $RequestResult|Select-Object -ExpandProperty $ValueProperty
+            $TotalItems += $Result.Count
+            Write-Output $Result
         }
         else
         {
-            if ($RequestResult.PSobject.Properties.name -match $ValueProperty)
+            Write-Output $RequestResult
+            $TotalItems++ #not sure why I am incrementing..
+        }
+        #Loop to aggregate OData continutation tokens
+        while ($RequestResult.PSobject.Properties.name -match $NextLinkProperty)
+        {
+            #Throttle the requests a bit..
+            Start-Sleep -Milliseconds $RequestDelayMilliseconds
+            $ResultPages++
+            $UriBld = New-Object System.UriBuilder($BaseUri)
+            $NextUri = $RequestResult|Select-Object -ExpandProperty $NextLinkProperty
+            if ($LimitResultPages -gt 0 -and $ResultPages -eq $LimitResultPages -or [String]::IsNullOrEmpty($NextUri))
             {
-                $Result = $RequestResult|Select-Object -ExpandProperty $ValueProperty
-                $TotalItems += $Result.Count
-                Write-Output $Result
+                break
+            }
+            Write-Verbose "[Invoke-AzureVaultRequest] Item Count:$TotalItems Page:$ResultPages More Items available @ $NextUri"
+            #Is this an absolute or relative uri?
+            if ($NextUri -match "$BaseUri*")
+            {
+                $UriBld = New-Object System.UriBuilder($NextUri)
             }
             else
             {
-                Write-Output $RequestResult
-                $TotalItems++ #not sure why I am incrementing..
+                $Path = $NextUri.Split('?')|Select-Object -First 1
+                $NextQuery = [Uri]::UnescapeDataString(($NextUri.Split('?')|Select-Object -Last 1))
+                $UriBld.Path = $Path
+                $UriBld.Query = $NextQuery
             }
-            #Loop to aggregate OData continutation tokens
-            while ($RequestResult.PSobject.Properties.name -match $NextLinkProperty)
+            try
             {
-                #Throttle the requests a bit..
-                Start-Sleep -Milliseconds $RequestDelayMilliseconds
-                $ResultPages++
-                $UriBld = New-Object System.UriBuilder($BaseUri)
-                $NextUri = $RequestResult|Select-Object -ExpandProperty $NextLinkProperty
-                if ($LimitResultPages -gt 0 -and $ResultPages -eq $LimitResultPages -or [String]::IsNullOrEmpty($NextUri))
+                $RequestParams['Uri'] = $UriBld.Uri
+                $Response = Invoke-WebRequest @RequestParams -UseBasicParsing -ErrorAction Stop
+                Write-Verbose "[Invoke-AzureVaultRequest]$Method $Uri Response:$($Response.StatusCode)-$($Response.StatusDescription) Content-Length:$($Response.RawContentLength)"
+                $RequestResult = Invoke-Command -ScriptBlock $ContentAction -ArgumentList $Response.Content|ConvertFrom-Json
+                if ($RequestResult.PSobject.Properties.name -match $ValueProperty)
                 {
-                    break
-                }
-                Write-Verbose "[Invoke-AzureVaultRequest] Item Count:$TotalItems Page:$ResultPages More Items available @ $NextUri"
-                #Is this an absolute or relative uri?
-                if ($NextUri -match "$BaseUri*")
-                {
-                    $UriBld = New-Object System.UriBuilder($NextUri)
+                    $Result = $RequestResult|Select-Object -ExpandProperty $ValueProperty
+                    $TotalItems += $Result.Count
+                    Write-Output $Result
                 }
                 else
                 {
-                    $Path = $NextUri.Split('?')|Select-Object -First 1
-                    $NextQuery = [Uri]::UnescapeDataString(($NextUri.Split('?')|Select-Object -Last 1))
-                    $UriBld.Path = $Path
-                    $UriBld.Query = $NextQuery
+                    Write-Output $RequestResult
+                    $TotalItems++ #not sure why I am incrementing..
                 }
-                try
+            }
+            catch
+            {
+                #See if we can unwind an exception from a response
+                if ($_.Exception.Response -ne $null)
                 {
-                    $RequestParams['Uri'] = $UriBld.Uri
-                    $Response = Invoke-WebRequest @RequestParams -UseBasicParsing -ErrorAction Stop
-                    Write-Verbose "[Invoke-AzureVaultRequest]$Method $Uri Response:$($Response.StatusCode)-$($Response.StatusDescription) Content-Length:$($Response.RawContentLength)"
-                    $RequestResult = Invoke-Command -ScriptBlock $ContentAction -ArgumentList $Response.Content|ConvertFrom-Json
-                    if ($RequestResult.PSobject.Properties.name -match $ValueProperty)
+                    $ExceptionResponse = $_.Exception.Response
+                    $ErrorStream = $ExceptionResponse.GetResponseStream()
+                    $ErrorStream.Position = 0
+                    $StreamReader = New-Object System.IO.StreamReader($ErrorStream)
+                    try
                     {
-                        $Result = $RequestResult|Select-Object -ExpandProperty $ValueProperty
-                        $TotalItems += $Result.Count
-                        Write-Output $Result
-                    }
-                    else
-                    {
-                        Write-Output $RequestResult
-                        $TotalItems++ #not sure why I am incrementing..
-                    }
-                }
-                catch
-                {
-                    #See if we can unwind an exception from a response
-                    if ($_.Exception.Response -ne $null)
-                    {
-                        $ExceptionResponse = $_.Exception.Response
-                        $ErrorStream = $ExceptionResponse.GetResponseStream()
-                        $ErrorStream.Position = 0
-                        $StreamReader = New-Object System.IO.StreamReader($ErrorStream)
-                        try
+                        $ErrorContent = $StreamReader.ReadToEnd()
+                        $StreamReader.Close()
+                        if (-not [String]::IsNullOrEmpty($ErrorContent))
                         {
-                            $ErrorContent = $StreamReader.ReadToEnd()
-                            $StreamReader.Close()
-                            if (-not [String]::IsNullOrEmpty($ErrorContent))
+                            $ErrorObject = $ErrorContent|ConvertFrom-Json
+                            if (-not [String]::IsNullOrEmpty($ErrorProperty) -and $ErrorObject.PSobject.Properties.name -match $ErrorProperty)
                             {
-                                $ErrorObject = $ErrorContent|ConvertFrom-Json
-                                if (-not [String]::IsNullOrEmpty($ErrorProperty) -and $ErrorObject.PSobject.Properties.name -match $ErrorProperty)
-                                {
-                                    $ErrorContent = ($ErrorObject|Select-Object -ExpandProperty $ErrorProperty)|ConvertTo-Json
-                                }
+                                $ErrorContent = ($ErrorObject|Select-Object -ExpandProperty $ErrorProperty)|ConvertTo-Json
                             }
                         }
-                        catch
-                        {
-                        }
-                        finally
-                        {
-                            $StreamReader.Close()
-                        }
-                        $ErrorMessage = "Error: $($ExceptionResponse.Method) $($ExceptionResponse.ResponseUri) Returned $($ExceptionResponse.StatusCode) $ErrorContent"
                     }
-                    else
+                    catch
                     {
-                        $ErrorMessage = "An error occurred $_"
                     }
-                    Write-Verbose "[Invoke-AzureVaultRequest] $ErrorMessage"
-                    throw $ErrorMessage
+                    finally
+                    {
+                        $StreamReader.Close()
+                    }
+                    $ErrorMessage = "Error: $($ExceptionResponse.Method) $($ExceptionResponse.ResponseUri) Returned $($ExceptionResponse.StatusCode) $ErrorContent"
                 }
-            }            
+                else
+                {
+                    $ErrorMessage = "An error occurred $_"
+                }
+                Write-Verbose "[Invoke-AzureVaultRequest] $ErrorMessage"
+                throw $ErrorMessage
+            }       
         }
     }
 }
@@ -256,27 +256,26 @@ Function New-AzureVaultKeyParameters
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [int]$ExpiryInDays = 365,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [int]$Epoch = $Script:UnixEpoch,        
+        [datetime]$Epoch = $Script:UnixEpoch,        
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [ValidateSet(1024,2048)]
         [int]$KeySize,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [System.Collections.IDictionary]$Tags        
     )
-    $NewKeyType = @{
-        'type' = $KeyType;
-    }
     $NewKeyAttributes = New-Object PSObject -Property @{
         'enabled' = $true;
         'nbf'     = $(($NotBefore - $Epoch).TotalSeconds);
         'exp'     = $((($NotBefore.AddDays($ExpiryInDays)) - $Epoch).TotalSeconds);
     }
-    $NewKeyParams = New-Object PSObject -Property @{
-        'kty'        = $NewKeyType;
-        'key_size'   = $KeySize;
+    $KeyProperties=[ordered]@{
         'attributes' = $NewKeyAttributes;
+        'key_ops'    = $KeyOperations;
+        'key_size'   = $KeySize;
+        'kty'        = $KeyType;
         'tags'       = $Tags;
     }
+    $NewKeyParams = New-Object PSObject -Property $KeyProperties
     Write-Output $NewKeyParams
 }
 
@@ -296,17 +295,17 @@ Function New-AzureVaultCertificateParameters
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String]$Issuer = 'Self',
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [String]$Enabled = $true,        
+        [bool]$Enabled = $true,        
         [ValidateSet('OV-SSL','EV-SSL')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String]$IssuerCertType = 'OV-SSL',        
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [String]$Subject,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String[]]$SubjectAlternateNameEmails,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String[]]$SubjectAlternateNameUpns,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String[]]$SubjectAlternateNameDnsNames,        
         [ValidateSet('EmailContacts', 'AutoRenew')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
@@ -316,15 +315,15 @@ Function New-AzureVaultCertificateParameters
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [int]$ExpiryInDays = 365,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [int]$Epoch = $Script:UnixEpoch,        
+        [datetime]$Epoch = $Script:UnixEpoch,        
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [datetime]$Exportable = $false,
+        [bool]$Exportable = $false,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [datetime]$ReuseKey = $true,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [bool]$ReuseKey = $true,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [ValidateRange(1,99)]
         [int]$LifetimeExpirePercentage = 90,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [ValidateRange(1,90)]
         [int]$LifetimeDaysBeforeExpire = 7,        
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
@@ -408,7 +407,7 @@ Function New-AzureVaultSecretParameters
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [int]$ExpiryInDays = 90,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [int]$Epoch = $Script:UnixEpoch                
+        [datetime]$Epoch = $Script:UnixEpoch
     )
     begin
     {
@@ -518,8 +517,8 @@ Function New-AzureVaultKey
         [String]$KeyType = 'RSA',
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [String]$KeyName,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [String[]]$KeyOperations,        
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [String[]]$KeyOperations=@("sign", "verify", "wrapKey", "unwrapKey", "encrypt", "decrypt"),        
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [datetime]$NotBefore = [datetime]::UtcNow,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
@@ -544,18 +543,20 @@ Function New-AzureVaultKey
     }
     PROCESS
     {
-        $NewKeyBody = New-AzureVaultKeyParameters @{
+        $KeyParams=@{
+            KeyName       = $KeyName;
             KeyType       = $KeyType;
             KeySize       = $KeySize;
             ExpiryInDays  = $ExpiryInDays;
             KeyOperations = $KeyOperations;
             NotBefore     = $NotBefore
         }
+        $NewKeyBody = New-AzureVaultKeyParameters @KeyParams
         $RequestParams = @{
             Uri               = $VaultUriBld.Uri;
             AdditionalHeaders = @{Accept = 'application/json'}
             Body              = $NewKeyBody;
-            Method            = 'PUT';
+            Method            = 'POST';
             ContentType       = 'application/json';
             ErrorAction       = 'STOP';
             AccessToken       = $AccessToken;
@@ -1033,14 +1034,19 @@ Function New-AzureVaultSecret
             ContentType       = 'application/json';
             Uri               = $VaultUriBld.Uri;
             ErrorAction       = 'Stop';
+            AccessToken       = $AccessToken;
         }        
     }
     PROCESS
     {
         #Build the object
         $SecretParams = @{
-            
-        } 
+            Value=$Value;
+            ContentType=$ContentType;
+            NotBefore=$NotBefore;
+            ExpiryInDays=$ExpiryInDays;
+            Tags=$Tags;
+        }
         $NewSecret = New-AzureVaultSecretParameters @SecretParams
         $RequestParams['Body'] = $NewSecret
         $Result = Invoke-AzureVaultRequest @RequestParams
@@ -1182,25 +1188,25 @@ Function New-AzureVaultCertificate
         [ValidateSet('EC', 'RSA', 'RSA-HSM', 'oct')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String]$KeyType = 'RSA',        
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [String[]]$KeyUsage,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [String[]]$KeyUsage=@("sign", "verify", "wrapKey", "unwrapKey", "encrypt", "decrypt"),
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String[]]$EnhancedKeyUsage,
         #[ValidateSet('Self','Unknown','DigiCert','GlobalSign','WoSign')] 
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String]$Issuer = 'Self',
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [String]$Enabled = $true,        
+        [bool]$Enabled = $true,        
         [ValidateSet('OV-SSL','EV-SSL')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String]$IssuerCertType = 'OV-SSL',        
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [String]$Subject,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String[]]$SubjectAlternateNameEmails,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String[]]$SubjectAlternateNameUpns,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String[]]$SubjectAlternateNameDnsNames,        
         [ValidateSet('EmailContacts', 'AutoRenew')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
@@ -1210,13 +1216,13 @@ Function New-AzureVaultCertificate
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [int]$ExpiryInDays = 365,        
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [datetime]$Exportable = $false,
+        [bool]$Exportable = $false,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [datetime]$ReuseKey = $true,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [bool]$ReuseKey = $true,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [ValidateRange(1,99)]
         [int]$LifetimeExpirePercentage = 90,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [ValidateRange(1,90)]
         [int]$LifetimeDaysBeforeExpire = 7,        
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
@@ -1234,21 +1240,39 @@ Function New-AzureVaultCertificate
         $VaultBaseUri="https://${VaultName}.${VaultDomain}"
         $VaultUriBld = New-Object System.UriBuilder($VaultBaseUri)
         $VaultUriBld.Query = "api-version=${ApiVersion}"
-        $VaultUriBld.Path = "/certificates/$CertificateName"
+        $VaultUriBld.Path = "/certificates/${CertificateName}/create"
         $RequestParams = @{
-            Method            = 'PUT'
             AdditionalHeaders = @{Accept = 'application/json'};
+            Method            = 'POST';
             ContentType       = 'application/json';
+            ErrorAction       = 'STOP';
+            AccessToken       = $AccessToken;
             Uri               = $VaultUriBld.Uri;
-            ErrorAction       = 'Stop';
         } 
     }
     PROCESS
     {
-        # tags
         #Build the object
         $CertificateParams = [ordered]@{
-
+            KeyType=$KeyType;
+            KeyUsage=$KeyUsage;
+            KeySize=$KeySize;
+            EnhancedKeyUsage=$EnhancedKeyUsage;
+            Issuer=$Issuer;
+            Enabled=$Enabled;
+            IssuerCertType=$IssuerCertType;
+            Subject=$Subject;
+            SubjectAlternateNameEmails=$SubjectAlternateNameEmails;
+            SubjectAlternateNameUpns=$SubjectAlternateNameUpns;
+            SubjectAlternateNameDnsNames=$SubjectAlternateNameDnsNames
+            LifetimeExpireActionType=$LifetimeExpireActionType;
+            LifetimeExpirePercentage=$LifetimeExpirePercentage
+            LifetimeDaysBeforeExpire=$LifetimeDaysBeforeExpire
+            NotBefore=$NotBefore;
+            ExpiryInDays=$ExpiryInDays;
+            Exportable=$Exportable;
+            ReuseKey=$ReuseKey;
+            Tags=$Tags;
         }
         $NewCertificate = New-AzureVaultCertificateParameters @CertificateParams
         $RequestParams['Body'] = $NewCertificate
