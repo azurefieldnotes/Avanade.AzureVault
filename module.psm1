@@ -4,6 +4,40 @@
 $Script:DefaultVaultDomain = 'vault.azure.net'
 $Script:UnixEpoch = New-Object DateTime(1970, 1, 1, 0, 0, 0, 0, [System.DateTimeKind]::Utc)
 
+$Script:KeyTypes=@{EllipticalCurve='EC';RSA='RSA';HSM='RSA-HSM';Octet='oct'}
+$Script:IssuerCertTypes=@('OV-SSL','EV-SSL')
+$Script:ExpirationActionTypes=@{'AutoRenew'='AutoRenew';'EmailContacts'='EmailContacts'}
+$Script:KeyUsageTypes=@{
+    DigitalSignature = "digitalSignature"
+    NonRepudiation = "nonRepudiation"
+    KeyEncipherment = "keyEncipherment"
+    DataEncipherment = "dataEncipherment"
+    KeyAgreement = "keyAgreement"
+    KeyCertSign = "keyCertSign"
+    CrlSign = "cRLSign"
+    EncipherOnly = "encipherOnly"
+    DecipherOnly = "decipherOnly"}
+$Script:EncryptionAlgorithms=@{    
+    rsa_oaep = "RSA-OAEP"
+    rsa_oaep_256 = "RSA-OAEP-256"
+    rsa1_5 = "RSA1_5"
+}
+$Script:SigningAlgorithms=@{
+    PS256 = "PS256"
+    PS384 = "PS384"
+    PS512 = "PS512"
+    RS256 = "RS256"
+    RS384 = "RS384"
+    RS512 = "RS512"
+    RSNULL = "RSNULL"
+}
+$Global:Azure_Vault_Values=@{
+    KeyTypes=$Script:KeyTypes
+    ExpirationActionTypes=$Script:ExpirationActionTypes
+    SigningAlgorithms=$Script:SigningAlgorithms
+    EncryptionAlgorithms=$Script:EncryptionAlgorithms
+}
+
 #region Helpers
 
 <#
