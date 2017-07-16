@@ -4,10 +4,6 @@
 $Script:DefaultVaultDomain = 'vault.azure.net'
 $Script:UnixEpoch = New-Object DateTime(1970, 1, 1, 0, 0, 0, 0, [System.DateTimeKind]::Utc)
 
-
-#Uri=https://vault.azure.net
-#ClientId=1950a258-227b-4e31-a9cf-717495945fc2
-
 #region Helpers
 
 <#
@@ -241,6 +237,28 @@ Function Invoke-AzureVaultRequest
     }
 }
 
+<#
+	.SYNOPSIS
+		Creates a parameter object for new/updated key requests
+	.DESCRIPTION
+		Creates a parameter object for new/updated key requests
+	.PARAMETER KeyType
+		The key type ('EC', 'RSA', 'RSA-HSM', 'oct')
+	.PARAMETER KeyName
+		The key name
+	.PARAMETER AccessToken
+		The OAuth bearer token
+	.PARAMETER KeyOperations
+		The allowed key operations
+	.PARAMETER ExpiryInDays
+		The vailidity length for the key
+	.PARAMETER NotBefore
+		The validity start date for the key
+	.PARAMETER KeySize
+		The KeySize (1024,2048)
+	.PARAMETER Tags
+		Key-value metadata pairs
+#>
 Function New-AzureVaultKeyParameters
 {
     [CmdletBinding()]
@@ -439,7 +457,24 @@ Function New-AzureVaultSecretParameters
 
 #region Keys
 
-#Get Key
+<#
+	.SYNOPSIS
+		Retrieves key(s) from the specified vault
+	.DESCRIPTION
+		Retrieves key(s) from the specified vault
+	.PARAMETER KeyName
+		The key name
+	.PARAMETER MaxResults
+		Limit the maximum results returned
+	.PARAMETER VaultName
+		The vault name
+	.PARAMETER VaultDomain
+		The vault FQDN
+	.PARAMETER ApiVersion
+		The vault api version
+	.PARAMETER AccessToken
+		The OAuth bearer token
+#>
 Function Get-AzureVaultKey
 {
     [CmdletBinding()]
@@ -507,7 +542,34 @@ Function Get-AzureVaultKey
     }
 }
 
-#Create Key
+<#
+	.SYNOPSIS
+		Creates a new key
+	.DESCRIPTION
+		Creates a new key
+	.PARAMETER KeyType
+		The key type ('EC', 'RSA', 'RSA-HSM', 'oct')
+	.PARAMETER KeyName
+		The key name
+	.PARAMETER KeyOperations
+		The allowed key operations
+	.PARAMETER ExpiryInDays
+		The vailidity length for the key
+	.PARAMETER NotBefore
+		The validity start date for the key
+	.PARAMETER KeySize
+		The KeySize (1024,2048)
+	.PARAMETER VaultName
+		The vault name
+	.PARAMETER VaultDomain
+		The vault FQDN
+	.PARAMETER Tags
+		Key-value metadata pairs
+	.PARAMETER ApiVersion
+		The vault api version
+	.PARAMETER AccessToken
+		The OAuth bearer token
+#>
 Function New-AzureVaultKey
 {
     [CmdletBinding()]
@@ -572,7 +634,22 @@ Function New-AzureVaultKey
     }
 }
 
-#Delete Key
+<#
+	.SYNOPSIS
+		Removes key(s) from the specified vault
+	.DESCRIPTION
+		Retrieves key(s) from the specified vault
+	.PARAMETER KeyName
+		The key name
+	.PARAMETER ApiVersion
+		The vault api version
+	.PARAMETER VaultName
+		The vault name
+	.PARAMETER VaultDomain
+		The vault FQDN
+	.PARAMETER AccessToken
+		The OAuth bearer token
+#>
 Function Remove-AzureVaultKey
 {
     [CmdletBinding()]
@@ -944,7 +1021,24 @@ function New-AzureVaultWrappedKey
 
 #region Secrets
 
-#Get Secrets
+<#
+    .SYNOPSIS
+        Retrieves secret(s) from the specified vault
+    .DESCRIPTION
+        Retrieves secret(s) from the specified vault
+    .PARAMETER VaultName
+        The vault name
+    .PARAMETER VaultDomain
+        The vault FQDN
+    .PARAMETER SecretName
+        The secret name(s)
+    .PARAMETER ApiVersion
+        The vault api version
+    .PARAMETER AccessToken
+        The OAuth bearer token
+    .PARAMETER MaxResults
+        Limit the number of results returned
+#>
 Function Get-AzureVaultSecret
 {
     [CmdletBinding()]
@@ -1075,7 +1169,22 @@ Function New-AzureVaultSecret
     }    
 }
 
-#Delete Secret
+<#
+    .SYNOPSIS
+        Removes secret(s) from the specified vault
+    .DESCRIPTION
+        Removes secret(s) from the specified vault
+    .PARAMETER VaultName
+        The vault name
+    .PARAMETER VaultDomain
+        The vault FQDN
+    .PARAMETER SecretName
+        The secret name(s)
+    .PARAMETER ApiVersion
+        The vault api version
+    .PARAMETER AccessToken
+        The OAuth bearer token
+#>
 Function Remove-AzureVaultSecret
 {
     [CmdletBinding()]
@@ -1352,7 +1461,64 @@ Function Remove-AzureVaultCertificate
 
 #endregion
 
-function ConvertFrom-AzureVaultSecretToCredential
+Function ConvertFrom-VaultSecretToSecureString
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String[]]$SecretName,    
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [String]$ApiVersion = '2016-10-01',
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$AccessToken        
+    )
+    PROCESS
+    {
+        foreach ($item in $SecretName)
+        {
+            $SecurePassword=New-Object securestring
+            $SecretParams=@{
+                VaultName=$VaultName;
+                VaultDomain=$VaultDomain;
+                ApiVersion=$ApiVersion;
+                AccessToken=$AccessToken;
+                SecretName=$item;
+            } 
+            #Retreive the secret from the vault   
+            $PasswordSecret=Get-AzureVaultSecret @SecretParams -ErrorAction Stop
+            if(-not [string]::IsNullOrEmpty($PasswordSecret))
+            {
+                $PasswordSecret.ToCharArray()|ForEach-Object{$SecurePassword.AppendChar($_)}
+            }
+            Write-Output $SecurePassword
+        }
+    }
+}
+
+<#
+    .SYNOPSIS
+        Uses a secret within the specified vault to create a PSCredential
+    .DESCRIPTION
+        Uses a secret within the specified vault to create a PSCredential
+    .PARAMETER UserName
+        The username for the Credential
+    .PARAMETER VaultName
+        The vault name
+    .PARAMETER VaultDomain
+        The vault FQDN
+    .PARAMETER SecretName
+        The secret name(s)
+    .PARAMETER ApiVersion
+        The vault api version
+    .PARAMETER AccessToken
+        The OAuth bearer token
+#>
+Function ConvertTo-CredentialFromAzureVaultSecret
 {
     [CmdletBinding()]
     param
@@ -1370,8 +1536,7 @@ function ConvertFrom-AzureVaultSecretToCredential
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [String]$AccessToken        
     )
-
-    begin
+    process
     {
         $SecretParams=@{
             VaultName=$VaultName;
@@ -1380,22 +1545,13 @@ function ConvertFrom-AzureVaultSecretToCredential
             AccessToken=$AccessToken;
             SecretName=$SecretName;
         }
-    }
-    process
-    {
-        #Retreive the secret from the vault   
-        $PasswordSecret=Get-AzureVaultSecret @SecretParams -ErrorAction Stop
-        $SecurePassword=new-object securestring
-        if(-not [string]::IsNullOrEmpty($PasswordSecret))
-        {
-            $PasswordSecret.ToCharArray()|ForEach-Object{$SecurePassword.AppendChar($_)}
-        }
+        $SecurePassword=ConvertFrom-VaultSecretToSecureString @SecretParams -ErrorAction Stop
         $Credential=New-Object PSCredential($UserName,$SecurePassword)
         Write-Output $Credential
     }
 }
 
-function ConvertFrom-AzureVaultSecretToCertificate
+Function ConvertFrom-AzureVaultSecretToCertificate
 {
     [CmdletBinding()]
     param
