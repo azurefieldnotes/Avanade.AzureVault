@@ -49,6 +49,46 @@ $Global:Azure_Vault_Values=@{
 
 #region Helpers
 
+Function ConvertToBase64UrlString
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [byte[]]$InputObject
+    )
+    PROCESS
+    {
+        $EncodedValue=[Convert]::ToBase64String($InputObject)
+        $Result=$EncodedValue.TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        Write-Output $Result
+    }
+}
+
+Function ConvertFromBase64UrlString
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true)]
+        [string[]]$InputObject
+    )
+    PROCESS
+    {
+        foreach ($item in $InputObject)
+        {
+            $item=$item.Replace('-', '+').Replace('_', '/')
+            $count = 3 - (($item.Length + 3) % 4);
+            if ($count -ne 0)
+            {
+                $item+=New-Object string('=', $count);
+            }    
+            $Result=[Convert]::FromBase64String($item);
+            Write-Output $Result            
+        }
+    }
+}
+
 <#
     .SYNOPSIS
         Generic request wrapper for the Key Vault Service API
@@ -761,7 +801,9 @@ function New-AzureVaultEncryptedValue
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String]$ApiVersion = '2016-10-01',        
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [String]$AccessToken              
+        [String]$AccessToken,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Switch]$AsString
     )
     begin
     {
@@ -785,8 +827,9 @@ function New-AzureVaultEncryptedValue
     }
     process
     {
-        $Bas64String=[Convert]::ToBase64String($Value)
-        $UrlString=$($Bas64String.TrimEnd('=').Replace('+', '-').Replace('/', '_'))
+        #$Bas64String=[Convert]::ToBase64String($Value)
+        #$UrlString=$($Bas64String.TrimEnd('=').Replace('+', '-').Replace('/', '_'))
+        $UrlString=ConvertToBase64UrlString -InputObject $Value
         $RequestParams['Body'] = [ordered]@{
             'alg'   = $Algorithm;
             'value' = $UrlString;
@@ -794,7 +837,8 @@ function New-AzureVaultEncryptedValue
         $Result = Invoke-AzureVaultRequest @RequestParams
         if ($Result -ne $null)
         {
-            Write-Output $Result
+            $ResultBytes=$Result|ConvertFromBase64UrlString
+            Write-Output $ResultBytes
         }
     }
 }
@@ -845,8 +889,7 @@ function Get-AzureVaultDecryptedValue
     }
     process
     {
-        $Bas64String=[Convert]::ToBase64String($Value)
-        $UrlString=$($Bas64String.TrimEnd('=').Replace('+', '-').Replace('/', '_'))
+        $UrlString=ConvertToBase64UrlString -InputObject $Value
         $RequestParams['Body'] = [ordered]@{
             'alg'   = $Algorithm;
             'value' = $UrlString;
@@ -854,7 +897,8 @@ function Get-AzureVaultDecryptedValue
         $Result = Invoke-AzureVaultRequest @RequestParams
         if ($Result -ne $null)
         {
-            Write-Output $Result
+            $ResultBytes=$Result|ConvertFromBase64UrlString
+            Write-Output $ResultBytes
         }
     }
 }
@@ -873,8 +917,8 @@ function New-AzureVaultSignedValue
         [string]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName = $true)]
-        [string[]]$Value,    
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [byte[]]$Value,    
         [ValidateSet('PS256', 'PS384', 'PS512', 'RS256', 'RS384', 'RS512', 'RSNULL')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$Algorithm = 'RS256',
@@ -905,18 +949,17 @@ function New-AzureVaultSignedValue
     }
     process
     {
-        foreach ($item in $Value)
-        {
-            $RequestParams['Body'] = [ordered]@{
-                'alg'   = $Algorithm;
-                'value' = $item;
-            }
-            $Result = Invoke-AzureVaultRequest @RequestParams
-            if ($Result -ne $null)
-            {
-                Write-Output $Result
-            }            
+        $UriString=ConvertToBase64UrlString -InputObject $Value
+        $RequestParams['Body'] = [ordered]@{
+            'alg'   = $Algorithm;
+            'value' = $UriString;
         }
+        $Result = Invoke-AzureVaultRequest @RequestParams
+        if ($Result -ne $null)
+        {
+            $ResultBytes=$Result|ConvertFromBase64UrlString
+            Write-Output $ResultBytes
+        }     
     }
 }
 
@@ -933,11 +976,9 @@ function Test-AzureVaultSignedValue
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [string]$KeyVersion,      
-        [Parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName = $true)]
-        [string[]]$Value,
+        [string]$KeyVersion,
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [string]$Digest,           
+        [byte[]]$Value,           
         [ValidateSet('PS256', 'PS384', 'PS512', 'RS256', 'RS384', 'RS512', 'RSNULL')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$Algorithm = 'RS256',
@@ -968,18 +1009,15 @@ function Test-AzureVaultSignedValue
     }
     process
     {
-        foreach ($item in $Value)
+        $UriString=ConvertToBase64UrlString -InputObject $Value
+        $RequestParams['Body'] = [ordered]@{
+            'alg'   = $Algorithm;
+            'value' = $UriString;
+        }
+        $Result = Invoke-AzureVaultRequest @RequestParams
+        if ($Result -ne $null)
         {
-            $RequestParams['Body'] = [ordered]@{
-                'alg'    = $Algorithm;
-                'digest' = $Digest;
-                'value'  = $item;
-            }
-            $Result = Invoke-AzureVaultRequest @RequestParams
-            if ($Result -ne $null)
-            {
-                Write-Output $Result
-            }            
+            Write-Output $Result
         }
     }
 }
@@ -998,8 +1036,8 @@ function New-AzureVaultUnwrappedKey
         [string]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName = $true)]
-        [string[]]$Value,      
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [byte[]]$Value,      
         [ValidateSet('RSA-OAEP', 'RSA-OAEP-256', 'RSA1_5' )]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$Algorithm = 'RSA-OAEP256',
@@ -1030,17 +1068,16 @@ function New-AzureVaultUnwrappedKey
     }
     process
     {
-        foreach ($item in $Value)
+        $UriString=ConvertToBase64UrlString -InputObject $Value
+        $RequestParams['Body'] = [ordered]@{
+            'alg'   = $Algorithm;
+            'value' = $UriString;
+        }
+        $Result = Invoke-AzureVaultRequest @RequestParams
+        if ($Result -ne $null)
         {
-            $RequestParams['Body'] = [ordered]@{
-                'alg'   = $Algorithm;
-                'value' = $item;
-            }
-            $Result = Invoke-AzureVaultRequest @RequestParams
-            if ($Result -ne $null)
-            {
-                Write-Output $Result
-            }            
+            $ResultBytes=$Result|ConvertFromBase64UrlString
+            Write-Output $ResultBytes
         }
     }
 }
@@ -1550,7 +1587,23 @@ Function Remove-AzureVaultCertificate
 
 #endregion
 
-Function ConvertFrom-VaultSecretToSecureString
+<#
+    .SYNOPSIS
+        Uses a secret within the specified vault to create a securestring
+    .DESCRIPTION
+        Uses a secret within the specified vault to create a securestring
+    .PARAMETER VaultName
+        The vault name
+    .PARAMETER VaultDomain
+        The vault FQDN
+    .PARAMETER SecretName
+        The secret name(s)
+    .PARAMETER ApiVersion
+        The vault api version
+    .PARAMETER AccessToken
+        The OAuth bearer token
+#>
+Function ConvertFrom-AzureVaultSecretToSecureString
 {
     [CmdletBinding()]
     param
