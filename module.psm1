@@ -737,6 +737,10 @@ function New-AzureVaultEncryptedValue
     param
     (
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,        
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
@@ -744,7 +748,11 @@ function New-AzureVaultEncryptedValue
         [string[]]$Value,        
         [ValidateSet('RSA-OAEP', 'RSA-OAEP-256', 'RSA1_5' )]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [string]$Algorithm = 'RSA-OAEP256'       
+        [string]$Algorithm = 'RSA-OAEP256',
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [String]$ApiVersion = '2016-10-01',        
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$AccessToken              
     )
     begin
     {
@@ -772,7 +780,7 @@ function New-AzureVaultEncryptedValue
         {
             $RequestParams['Body'] = [ordered]@{
                 'alg'   = $Algorithm;
-                'value' = $Value;
+                'value' = $item;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -790,14 +798,22 @@ function Get-AzureVaultDecryptedValue
     param
     (
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,        
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [string]$Value,        
+        [Parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName = $true)]
+        [string[]]$Value,        
         [ValidateSet('RSA-OAEP', 'RSA-OAEP-256', 'RSA1_5' )]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [string]$Algorithm = 'RSA-OAEP256'       
+        [string]$Algorithm = 'RSA-OAEP256',
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [String]$ApiVersion = '2016-10-01',        
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$AccessToken             
     )
     begin
     {
@@ -825,7 +841,7 @@ function Get-AzureVaultDecryptedValue
         {
             $RequestParams['Body'] = [ordered]@{
                 'alg'   = $Algorithm;
-                'value' = $Value;
+                'value' = $item;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -843,14 +859,22 @@ function New-AzureVaultSignedValue
     param
     (
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,         
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [string]$Value,        
+        [Parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName = $true)]
+        [string[]]$Value,    
         [ValidateSet('PS256', 'PS384', 'PS512', 'RS256', 'RS384', 'RS512', 'RSNULL')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [string]$Algorithm = 'RS256'       
+        [string]$Algorithm = 'RS256',
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]        
+        [String]$ApiVersion = '2016-10-01',      
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$AccessToken            
     )
     begin
     {
@@ -878,7 +902,7 @@ function New-AzureVaultSignedValue
         {
             $RequestParams['Body'] = [ordered]@{
                 'alg'   = $Algorithm;
-                'value' = $Value;
+                'value' = $item;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -896,16 +920,24 @@ function Test-AzureVaultSignedValue
     param
     (
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,        
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,      
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [string]$Value,
+        [Parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName = $true)]
+        [string[]]$Value,
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$Digest,           
         [ValidateSet('PS256', 'PS384', 'PS512', 'RS256', 'RS384', 'RS512', 'RSNULL')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [string]$Algorithm = 'RS256'       
+        [string]$Algorithm = 'RS256',
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]        
+        [String]$ApiVersion = '2016-10-01',      
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$AccessToken           
     )
     begin
     {
@@ -934,7 +966,7 @@ function Test-AzureVaultSignedValue
             $RequestParams['Body'] = [ordered]@{
                 'alg'    = $Algorithm;
                 'digest' = $Digest;
-                'value'  = $Value;
+                'value'  = $item;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -952,14 +984,22 @@ function New-AzureVaultUnwrappedKey
     param
     (
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,        
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [string]$Value,        
+        [Parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName = $true)]
+        [string[]]$Value,      
         [ValidateSet('RSA-OAEP', 'RSA-OAEP-256', 'RSA1_5' )]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [string]$Algorithm = 'RSA-OAEP256'    
+        [string]$Algorithm = 'RSA-OAEP256',
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]        
+        [String]$ApiVersion = '2016-10-01',      
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$AccessToken         
     )
     begin
     {
@@ -987,7 +1027,7 @@ function New-AzureVaultUnwrappedKey
         {
             $RequestParams['Body'] = [ordered]@{
                 'alg'   = $Algorithm;
-                'value' = $Value;
+                'value' = $item;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
@@ -1005,14 +1045,22 @@ function New-AzureVaultWrappedKey
     param
     (
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,        
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyName,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [string]$KeyVersion,        
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [string]$Value,        
+        [Parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName = $true)]
+        [string[]]$Value,        
         [ValidateSet('RSA-OAEP', 'RSA-OAEP-256', 'RSA1_5' )]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
-        [string]$Algorithm = 'RSA-OAEP256'   
+        [string]$Algorithm = 'RSA-OAEP256',
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]        
+        [String]$ApiVersion = '2016-10-01',      
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [String]$AccessToken         
     )
     begin
     {
@@ -1040,7 +1088,7 @@ function New-AzureVaultWrappedKey
         {
             $RequestParams['Body'] = [ordered]@{
                 'alg'   = $Algorithm;
-                'value' = $Value;
+                'value' = $item;
             }
             $Result = Invoke-AzureVaultRequest @RequestParams
             if ($Result -ne $null)
