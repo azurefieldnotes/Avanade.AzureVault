@@ -1687,7 +1687,7 @@ Function ConvertTo-CredentialFromAzureVaultSecret
             AccessToken=$AccessToken;
             SecretName=$SecretName;
         }
-        $SecurePassword=ConvertFrom-VaultSecretToSecureString @SecretParams -ErrorAction Stop
+        $SecurePassword=ConvertFrom-AzureVaultSecretToSecureString @SecretParams -ErrorAction Stop
         $Credential=New-Object PSCredential($UserName,$SecurePassword)
         Write-Output $Credential
     }
