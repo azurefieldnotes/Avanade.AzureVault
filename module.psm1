@@ -1662,24 +1662,43 @@ Function ConvertFrom-AzureVaultSecretToSecureString
 #>
 Function ConvertTo-CredentialFromAzureVaultSecret
 {
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName='NoUserSecret')]
     param
     (
-        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName='NoUserSecret')]
         [string]$UserName,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='UserSecret')]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='NoUserSecret')]
         [String]$VaultName,
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='UserSecret')]
+        [String]$UserVaultName=$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='UserSecret')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='NoUserSecret')]
         [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [String]$SecretName,    
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='UserSecret')]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='NoUserSecret')]
+        [String]$SecretName,
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='UserSecret')]
+        [String]$UserSecretName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='UserSecret')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='NoUserSecret')]
         [String]$ApiVersion = '2016-10-01',
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='UserSecret')]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='NoUserSecret')]
         [String]$AccessToken        
     )
     process
     {
+        if ($PSCmdlet.ParameterSetName -eq 'UserSecret') {
+            $UserParams=@{
+                VaultName=$UserVaultName;
+                VaultDomain=$VaultDomain;
+                ApiVersion=$ApiVersion;
+                AccessToken=$AccessToken;
+                SecretName=$UserSecretName;                
+            }
+            $UserName=Get-AzureVaultSecret @UserParams -ErrorAction Stop
+        }
         $SecretParams=@{
             VaultName=$VaultName;
             VaultDomain=$VaultDomain;
@@ -1687,7 +1706,7 @@ Function ConvertTo-CredentialFromAzureVaultSecret
             AccessToken=$AccessToken;
             SecretName=$SecretName;
         }
-        $SecurePassword=ConvertFrom-VaultSecretToSecureString @SecretParams -ErrorAction Stop
+        $SecurePassword=ConvertFrom-AzureVaultSecretToSecureString @SecretParams -ErrorAction Stop
         $Credential=New-Object PSCredential($UserName,$SecurePassword)
         Write-Output $Credential
     }
@@ -1726,7 +1745,7 @@ Function ConvertFrom-AzureVaultSecretToCertificate
         $PasswordSecret=Get-AzureVaultSecret @SecretParams -ErrorAction Stop
         if($PasswordSecret -ne $null -and (-not [string]::IsNullOrEmpty($PasswordSecret.value)))
         {
-
+            #Convert the certficate reference...
         }
     }
 }
