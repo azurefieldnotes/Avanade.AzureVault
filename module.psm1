@@ -1237,30 +1237,44 @@ Function Get-AzureVaultSecret
 #Create Secret
 Function New-AzureVaultSecret
 {
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName='string')]
     param
     (
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [String]$VaultName,
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [String]$SecretName,
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [string]$Value,
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
+        [securestring]$CertificatePassword,                
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [System.Collections.IDictionary]$Tags,
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [string]$ContentType = 'password',
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [bool]$Enabled = $true,
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [datetime]$NotBefore = [datetime]::UtcNow,
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [int]$ExpiryInDays = 90,        
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [String]$ApiVersion = '2016-10-01',
-        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [String]$AccessToken             
     )
     BEGIN
@@ -1279,14 +1293,24 @@ Function New-AzureVaultSecret
     }
     PROCESS
     {
+        if($PSCmdlet.ParameterSetName -eq 'cert')
+        {
+            if($ContentType -ne 'application/x-pkcs12')
+            {
+                $ContentType = 'application/x-pkcs12';
+            }
+            #'Export' the cert
+            $RawCertBytes=$Certificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pkcs12,$CertificatePassword)
+            $Value=[System.Convert]::ToBase64String($RawCertBytes)
+        }
         #Build the object
         $SecretParams = @{
-            Value        = $Value;
+            Value        = $Value            
             ContentType  = $ContentType;
             NotBefore    = $NotBefore;
             ExpiryInDays = $ExpiryInDays;
             Tags         = $Tags;
-        }
+        }        
         $NewSecret = New-AzureVaultSecretParameters @SecretParams
         $RequestParams['Body'] = $NewSecret
         $Result = Invoke-AzureVaultRequest @RequestParams
