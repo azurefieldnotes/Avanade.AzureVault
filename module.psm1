@@ -149,6 +149,8 @@ Function Invoke-AzureVaultRequest
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [switch]$ReturnHeaders,
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
+        [switch]$DontExpand,        
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [int]$RequestDelayMilliseconds = 100
     )
     $TotalItems = 0
@@ -224,7 +226,7 @@ Function Invoke-AzureVaultRequest
     #Should never get here null
     if ($RequestResult -ne $null)
     {
-        if ($RequestResult.PSobject.Properties.name -match $ValueProperty)
+        if ($RequestResult.PSobject.Properties.name -match $ValueProperty -and (-not $DontExpand.IsPresent))
         {
             $Result = $RequestResult|Select-Object -ExpandProperty $ValueProperty
             $TotalItems += $Result.Count
@@ -1714,6 +1716,7 @@ Function ConvertTo-CredentialFromAzureVaultSecret
 
 Function ConvertFrom-AzureVaultSecretToCertificate
 {
+    [OutputType([System.Security.Cryptography.X509Certificates.X509Certificate2])]
     [CmdletBinding()]
     param
     (
@@ -1722,30 +1725,32 @@ Function ConvertFrom-AzureVaultSecretToCertificate
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
-        [String]$SecretName,    
+        [String[]]$SecretName,    
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true)]
         [String]$ApiVersion = '2016-10-01',
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true)]
         [String]$AccessToken        
     )
-
-    begin
-    {
-        $SecretParams=@{
-            VaultName=$VaultName;
-            VaultDomain=$VaultDomain;
-            ApiVersion=$ApiVersion;
-            AccessToken=$AccessToken;
-            SecretName=$SecretName;
-        }
-    }
     process
     {
-        #Retreive the secret from the vault   
-        $PasswordSecret=Get-AzureVaultSecret @SecretParams -ErrorAction Stop
-        if($PasswordSecret -ne $null -and (-not [string]::IsNullOrEmpty($PasswordSecret.value)))
+        foreach ($item in $SecretName)
         {
-            #Convert the certficate reference...
+            $SecretParams=@{
+                VaultName=$VaultName;
+                VaultDomain=$VaultDomain;
+                ApiVersion=$ApiVersion;
+                AccessToken=$AccessToken;
+                SecretName=$item;
+            }            
+            #Retreive the secret from the vault   
+            $SecretResult=Get-AzureVaultSecret @SecretParams -ErrorAction Stop
+            if($SecretResult -ne $null -and (-not [string]::IsNullOrEmpty($SecretResult)))
+            {
+                #Convert the certficate reference...
+                $SecretBytes=[Convert]::FromBase64String($SecretResult)
+                $Cert=[System.Security.Cryptography.X509Certificates.X509Certificate2]::new($SecretBytes)
+                Write-Output $Cert
+            }            
         }
     }
 }
