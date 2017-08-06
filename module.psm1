@@ -23,12 +23,12 @@ $Script:EncryptionAlgorithms=@{
     rsa1_5 = "RSA1_5"
 }
 $Script:KeyOperations=@{
-    'encrypt'='encrypt';
-    'decrypt'='decrypt';
-    'sign'='sign';
-    'verify'='verify';
-    'wrapKey'='wrapKey';
-    'unwrapKey'='unwrapKey'
+    encrypt   = 'encrypt';
+    decrypt   = 'decrypt';
+    sign      = 'sign';
+    verify    = 'verify';
+    wrapKey   = 'wrapKey';
+    unwrapKey = 'unwrapKey'
 }
 $Script:SigningAlgorithms=@{
     PS256 = "PS256"
@@ -1240,12 +1240,15 @@ Function New-AzureVaultSecret
     [CmdletBinding(DefaultParameterSetName='string')]
     param
     (
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [String]$VaultName,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [System.Uri]$VaultDomain = $Script:DefaultVaultDomain,
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [String]$SecretName,
@@ -1253,28 +1256,38 @@ Function New-AzureVaultSecret
         [string]$Value,
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
+        [System.IO.FileInfo]$PfxFile,
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [securestring]$CertificatePassword,                
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [System.Collections.IDictionary]$Tags,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [string]$ContentType = 'password',
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [bool]$Enabled = $true,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [datetime]$NotBefore = [datetime]::UtcNow,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
-        [int]$ExpiryInDays = 90,        
+        [int]$ExpiryInDays = 90,
+        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
         [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [String]$ApiVersion = '2016-10-01',
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='certfile')]
         [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='string')]
-        [Parameter(Mandatory = $false,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
+        [Parameter(Mandatory = $true,ValueFromPipelineByPropertyName = $true,ParameterSetName='cert')]
         [String]$AccessToken             
     )
     BEGIN
@@ -1302,6 +1315,23 @@ Function New-AzureVaultSecret
             #'Export' the cert
             $RawCertBytes=$Certificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pkcs12,$CertificatePassword)
             $Value=[System.Convert]::ToBase64String($RawCertBytes)
+        }
+        elseif ($PSCmdlet.ParameterSetName -eq 'certfile')
+        {
+            if($ContentType -ne 'application/x-pkcs12')
+            {
+                $ContentType = 'application/x-pkcs12';
+            }
+            if(-not $PfxFile.Exists){
+                throw "Unable to find the certificate file $($PfxFile.FullName)!"
+            }
+            #Export it without the private key
+            $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($CertificatePassword)
+            $ClearPassword= [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+            $CertCollection = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2Collection
+            $CertCollection.Import($PfxFile.FullName,$ClearPassword,[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+            $CertBytes=$CertCollection.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pkcs12)
+            $Value=[System.Convert]::ToBase64String($CertBytes)
         }
         #Build the object
         $SecretParams = @{
@@ -1613,6 +1643,8 @@ Function Remove-AzureVaultCertificate
 
 #endregion
 
+#region Secret Helpers
+
 <#
     .SYNOPSIS
         Uses a secret within the specified vault to create a securestring
@@ -1738,6 +1770,22 @@ Function ConvertTo-CredentialFromAzureVaultSecret
     }
 }
 
+<#
+    .SYNOPSIS
+        Retrieves a certificate from an Azure Key Vault secret store
+    .DESCRIPTION
+        Retrieves a certificate from an Azure Key Vault secret store
+    .PARAMETER VaultName
+        The vault name
+    .PARAMETER VaultDomain
+        The vault FQDN
+    .PARAMETER SecretName
+        The secret name(s)
+    .PARAMETER ApiVersion
+        The vault api version
+    .PARAMETER AccessToken
+        The OAuth bearer token
+#>
 Function ConvertFrom-AzureVaultSecretToCertificate
 {
     [OutputType([System.Security.Cryptography.X509Certificates.X509Certificate2])]
@@ -1778,3 +1826,5 @@ Function ConvertFrom-AzureVaultSecretToCertificate
         }
     }
 }
+
+#endregion
